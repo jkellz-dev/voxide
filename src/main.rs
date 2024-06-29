@@ -7,6 +7,8 @@ use std::io;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    env_logger::Logger::from_default_env();
+
     let mut terminal = tui::init()?;
     let mut app = app::App::new().await.expect("Failed to create app");
     let app_result = app.run(&mut terminal);
@@ -25,10 +27,10 @@ async fn main() -> io::Result<()> {
 //     //     .await
 //     //     .expect("Failed to get stations");
 //     //
-//     // println!("Stations found: {}", stations.len());
+//     // debug!("Stations found: {}", stations.len());
 //     //
 //     // for s in stations {
-//     //     println!("{:?}", s);
+//     //     debug!("{:?}", s);
 //     // }
 //
 //     stdout().execute(EnterAlternateScreen)?;
@@ -62,7 +64,7 @@ async fn main() -> io::Result<()> {
 //     disable_raw_mode()?;
 //     Ok(())
 //
-//     // println!("https://kexp-mp3-128.streamguys1.com/kexp128.mp3");
+//     // debug!("https://kexp-mp3-128.streamguys1.com/kexp128.mp3");
 //     //
 //     // let url = "https://kexp-mp3-128.streamguys1.com/kexp128.mp3";
 //     //

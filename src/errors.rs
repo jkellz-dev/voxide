@@ -1,11 +1,11 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("RadioBrowserError: {0}")]
-    RadioBrowserError(#[from] radiobrowser::RbError),
+    RadioBrowser(#[from] radiobrowser::RbError),
     #[error("ReqwestError: {0}")]
-    ReqwestError(#[from] reqwest::Error),
+    Reqwest(#[from] reqwest::Error),
     #[error("HttptError: {0}")]
-    HttpError(reqwest::StatusCode),
+    Http(reqwest::StatusCode),
     #[error("LockError: {0}")]
-    LockError(String),
+    Lock(String),
 }

@@ -1,5 +1,6 @@
 use std::{io::Write, thread, time::Duration};
 
+use log::debug;
 use radiobrowser::ApiStation;
 use reqwest::header;
 use rodio::{Decoder, OutputStream, Sink};
@@ -32,7 +33,7 @@ impl RadioStation {
             .await?;
 
         if response.status() != 200 {
-            return Err(Error::HttpError(response.status()));
+            return Err(Error::Http(response.status()));
         }
 
         let (_stream, stream_handle) = OutputStream::try_default().unwrap();
@@ -44,12 +45,12 @@ impl RadioStation {
 
         tokio::spawn(async move {
             while let Some(chunk) = response.chunk().await.unwrap() {
-                println!("got chunk: {}", chunk.len());
+                debug!("got chunk: {}", chunk.len());
                 let mut guard = buf.lock().expect("failed to lock buffer");
                 let result = guard.write(chunk.as_ref());
                 match result {
-                    Ok(n) => println!("pushed chunk: {}", n),
-                    Err(e) => println!("error {:?}", e),
+                    Ok(n) => debug!("pushed chunk: {}", n),
+                    Err(e) => debug!("error {:?}", e),
                 }
             }
         });

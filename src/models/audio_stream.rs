@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use log::debug;
+
 use crate::errors::Error;
 
 pub struct AudioStream {
@@ -25,7 +27,7 @@ impl AudioStream {
         Ok(self
             .buf
             .lock()
-            .map_err(|e| Error::LockError(e.to_string()))?
+            .map_err(|e| Error::Lock(e.to_string()))?
             .len())
     }
 }
@@ -43,7 +45,7 @@ impl Seek for AudioStream {
 impl Read for AudioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let mut guard = self.buf.lock().expect("failed to lock buffer");
-        println!("reading: {}", buf.len());
+        debug!("reading: {}", buf.len());
         guard.read(buf)
     }
 }
