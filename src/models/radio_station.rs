@@ -1,6 +1,6 @@
-use std::io::Write;
-use std::{thread, time::Duration};
+use std::{io::Write, thread, time::Duration};
 
+use radiobrowser::ApiStation;
 use reqwest::header;
 use rodio::{Decoder, OutputStream, Sink};
 
@@ -8,23 +8,25 @@ use crate::errors::Error;
 
 use super::audio_stream::AudioStream;
 
-pub struct RadioStation<'a> {
-    url: &'a str,
+pub struct RadioStation {
+    pub name: String,
+    pub url: String,
     sink: Option<Sink>,
 }
 
-impl<'a> RadioStation<'a> {
-    pub fn new(url: &'a str) -> Self {
+impl RadioStation {
+    pub fn new<T: ToString>(url: T, name: T) -> Self {
         Self {
             // buffer,
-            url,
+            name: name.to_string(),
+            url: url.to_string(),
             sink: None,
         }
     }
     pub async fn play(&mut self) -> Result<OutputStream, Error> {
         let client = reqwest::Client::new();
         let mut response = client
-            .get(self.url)
+            .get(&self.url)
             .header(header::CONNECTION, "keep-alive")
             .send()
             .await?;
@@ -62,5 +64,15 @@ impl<'a> RadioStation<'a> {
         self.sink = Some(sink);
 
         Ok(_stream)
+    }
+}
+
+impl From<ApiStation> for RadioStation {
+    fn from(value: ApiStation) -> Self {
+        Self {
+            name: value.name,
+            url: value.url,
+            sink: None,
+        }
     }
 }
