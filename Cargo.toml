@@ -1,0 +1,16 @@
+[package]
+name = "voxide"
+version = "0.1.0"
+edition = "2021"
+authors = ["Jonathan Kellebnberg <jonathan@jkellz.dev>"]
+
+[dependencies]
+radiobrowser = { version = "^0.6" }
+ratatui = { version = "^0.27" }
+reqwest = { version = "^0.12" }
+rodio = { version = "^0.18" }
+thiserror = { version = "^1" }
+tokio = { version = "^1", features = ["macros", "rt-multi-thread", "signal"] }
+
+[patch.crates-io]
+radiobrowser = { git = "https://gitlab.com/radiobrowser/radiobrowser-lib-rust.git" }
