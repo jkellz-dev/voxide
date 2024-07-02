@@ -1,5 +1,6 @@
 use radiobrowser::{RadioBrowserAPI, StationOrder};
 use serde::{Deserialize, Serialize};
+use strum::EnumString;
 
 use crate::errors::Error;
 
@@ -50,7 +51,7 @@ impl RadioApi {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, EnumString)]
 pub enum Order {
     Name,
     Url,

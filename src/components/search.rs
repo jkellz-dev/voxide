@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::time::Instant;
+use std::{collections::HashMap, str::FromStr, time::Instant};
 
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -9,7 +8,7 @@ use tui_input::{backend::crossterm::EventHandler, Input};
 
 use super::Component;
 use crate::mode::Mode as AppMode;
-use crate::models::SearchParam;
+use crate::models::{Order, SearchParam};
 use crate::{action::Action, tui::Frame};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -63,23 +62,26 @@ impl Search {
         }
     }
 
-    fn get_search_param(&self) -> Vec<SearchParam> {
+    fn get_search_param(&mut self) -> Vec<SearchParam> {
         let mut result = Vec::new();
 
         if !self.search_name.value().is_empty() {
-            result.push(SearchParam::Name(self.search_name.value().to_string()))
+            result.push(SearchParam::Name(self.search_name.value().to_string()));
+            self.search_name.reset();
         };
 
         if !self.search_country.value().is_empty() {
             result.push(SearchParam::Country(
                 self.search_country.value().to_string(),
-            ))
+            ));
+            self.search_country.reset();
         };
 
         if !self.search_language.value().is_empty() {
             result.push(SearchParam::Language(
                 self.search_language.value().to_string(),
-            ))
+            ));
+            self.search_language.reset();
         };
 
         if !self.search_tags.value().is_empty() {
@@ -89,13 +91,34 @@ impl Search {
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect();
-            result.push(SearchParam::Tags(tags))
+            result.push(SearchParam::Tags(tags));
+
+            self.search_tags.reset();
+        };
+
+        if !self.search_limit.value().is_empty() {
+            let limit = self.search_limit.value().parse::<usize>().unwrap_or(30);
+
+            result.push(SearchParam::Limit(limit));
+            self.search_limit.reset();
+        };
+
+        if !self.search_order.value().is_empty() {
+            let order = Order::from_str(self.search_order.value()).unwrap_or(Order::Name);
+            result.push(SearchParam::Order(order));
+            self.search_order.reset();
+        };
+
+        if !self.search_reverse.value().is_empty() {
+            let reverse = bool::from_str(self.search_reverse.value()).unwrap_or(true);
+            result.push(SearchParam::Reverse(reverse));
+            self.search_reverse.reset();
         };
 
         result
     }
 
-    fn send_search_params(&self) -> Action {
+    fn send_search_params(&mut self) -> Action {
         let params = self.get_search_param();
         tracing::info!(?params, "sending search");
         if let Some(sender) = &self.action_tx {
@@ -220,7 +243,7 @@ impl Component for Search {
                     Action::Update
                 }
                 _ => {
-                    self.search_tags
+                    self.search_limit
                         .handle_event(&crossterm::event::Event::Key(key));
                     Action::Update
                 }
@@ -236,7 +259,7 @@ impl Component for Search {
                     Action::Update
                 }
                 _ => {
-                    self.search_tags
+                    self.search_order
                         .handle_event(&crossterm::event::Event::Key(key));
                     Action::Update
                 }
@@ -252,7 +275,7 @@ impl Component for Search {
                     Action::Update
                 }
                 _ => {
-                    self.search_tags
+                    self.search_reverse
                         .handle_event(&crossterm::event::Event::Key(key));
                     Action::Update
                 }
