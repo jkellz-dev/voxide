@@ -50,7 +50,13 @@ impl StreamState {
     }
 
     pub fn shutdown(&self) {
-        self.shutdown_tx.send(());
+        self.shutdown_tx
+            .send(())
+            .map_err(|e| -> std::result::Result<usize, _> {
+                tracing::error!(error=?e, "failed to send shutdown signal");
+                Err(e)
+            })
+            .unwrap();
     }
 }
 
@@ -78,6 +84,9 @@ impl StationsList {
     }
 
     fn next(&mut self) {
+        if self.items.is_empty() {
+            return self.state.select(None);
+        }
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
@@ -92,6 +101,9 @@ impl StationsList {
     }
 
     fn previous(&mut self) {
+        if self.items.is_empty() {
+            return self.state.select(None);
+        }
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
@@ -122,6 +134,7 @@ pub struct Home {
     pub radio_api: Arc<RadioApi>,
     pub stations: StationsList,
     pub now_playing: Option<StreamState>,
+    throbber_state: throbber_widgets_tui::ThrobberState,
     pub counter: usize,
     pub app_ticker: usize,
     pub render_ticker: usize,
@@ -130,7 +143,6 @@ pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,
     pub keymap: HashMap<KeyEvent, Action>,
     pub text: Vec<String>,
-    pub last_events: Vec<KeyEvent>,
 }
 
 impl Home {
@@ -139,6 +151,7 @@ impl Home {
             radio_api: Arc::new(RadioApi::new().await?),
             stations: Default::default(),
             now_playing: Default::default(),
+            throbber_state: Default::default(),
             show_help: Default::default(),
             counter: Default::default(),
             app_ticker: Default::default(),
@@ -148,7 +161,6 @@ impl Home {
             action_tx: Default::default(),
             keymap: Default::default(),
             text: Default::default(),
-            last_events: Default::default(),
         })
     }
 
@@ -159,8 +171,8 @@ impl Home {
 
     pub fn tick(&mut self) {
         tracing::trace!("Tick");
+        self.throbber_state.calc_next();
         self.app_ticker = self.app_ticker.saturating_add(1);
-        self.last_events.drain(..);
     }
 
     pub fn render_tick(&mut self) {
@@ -172,14 +184,14 @@ impl Home {
         self.text.push(s)
     }
 
-    pub fn search_stations(&mut self, name: String) {
-        let params = [SearchParam::Name(name)];
-
+    pub fn search_stations(&mut self, params: Vec<SearchParam>) {
         let tx = self.action_tx.clone().unwrap();
         let api = self.radio_api.clone();
         tokio::spawn(async move {
             tx.send(Action::EnterProcessing).unwrap();
-            let stations = api.get_stations(params.into()).await.unwrap();
+            tracing::info!(?params, "Searching stations");
+            let stations = api.get_stations(params).await.unwrap();
+
             tx.send(Action::StationsFound(stations)).unwrap();
             tx.send(Action::ExitProcessing).unwrap();
         });
@@ -197,40 +209,41 @@ impl Home {
         self.stations.previous();
     }
 
-    pub fn play_station(&mut self) {
+    pub fn select_station(&mut self) {
         if let Some(station) = self.stations.select_station() {
-            if let Some(tx) = &self.action_tx {
-                let mut play_station = station.clone();
-
-                let (shutdown_tx, mut _shutdown_rx) = broadcast::channel(1);
-                let download_shutdown_rx = shutdown_tx.subscribe();
-                let play_shutdown_rx = shutdown_tx.subscribe();
-                let handle = tokio::spawn(async move {
-                    tracing::info!("Starting play");
-                    play_station
-                        .play(download_shutdown_rx, play_shutdown_rx)
-                        .await
-                        .unwrap();
-                    tracing::info!("Done playing");
-                });
-
-                self.now_playing = Some(StreamState {
-                    station,
-                    stream_handle: handle,
-                    shutdown_tx,
-                });
-
-                // tx.send(Action::EnterProcessing).unwrap();
-                // let rt = tokio::runtime::Builder::new_current_thread()
-                //     .enable_all()
-                //     .build()
-                //     .unwrap();
-                //
-                // // Call the asynchronous connect method using the runtime.
-                // let state = rt.block_on(station.play()).unwrap();
-                // self.now_playing = Some(state);
-                tx.send(Action::ExitProcessing).unwrap();
+            if let Some(now_paying) = self.now_playing.as_ref() {
+                if station.stationuuid == now_paying.station.stationuuid {
+                    self.stop_station();
+                    return;
+                }
             }
+            self.play_station(station);
+        }
+    }
+
+    fn play_station(&mut self, station: RadioStation) {
+        if let Some(tx) = &self.action_tx {
+            let mut play_station = station.clone();
+
+            let (shutdown_tx, mut _shutdown_rx) = broadcast::channel(1);
+            let download_shutdown_rx = shutdown_tx.subscribe();
+            let play_shutdown_rx = shutdown_tx.subscribe();
+            let handle = tokio::spawn(async move {
+                tracing::info!("Starting play");
+                play_station
+                    .play(download_shutdown_rx, play_shutdown_rx)
+                    .await
+                    .unwrap();
+                tracing::info!("Done playing");
+            });
+
+            self.now_playing = Some(StreamState {
+                station,
+                stream_handle: handle,
+                shutdown_tx,
+            });
+
+            tx.send(Action::ExitProcessing).unwrap();
         }
     }
 
@@ -241,34 +254,6 @@ impl Home {
         }
         self.now_playing = None;
     }
-
-    // pub fn schedule_increment(&mut self, i: usize) {
-    //     let tx = self.action_tx.clone().unwrap();
-    //     tokio::spawn(async move {
-    //         tx.send(Action::EnterProcessing).unwrap();
-    //         // tokio::time::sleep(Duration::from_secs(1)).await;
-    //         tx.send(Action::Increment(i)).unwrap();
-    //         tx.send(Action::ExitProcessing).unwrap();
-    //     });
-    // }
-    //
-    // pub fn schedule_decrement(&mut self, i: usize) {
-    //     let tx = self.action_tx.clone().unwrap();
-    //     tokio::spawn(async move {
-    //         tx.send(Action::EnterProcessing).unwrap();
-    //         // tokio::time::sleep(Duration::from_secs(1)).await;
-    //         tx.send(Action::Decrement(i)).unwrap();
-    //         tx.send(Action::ExitProcessing).unwrap();
-    //     });
-    // }
-    //
-    // pub fn increment(&mut self, i: usize) {
-    //     self.counter = self.counter.saturating_add(i);
-    // }
-    //
-    // pub fn decrement(&mut self, i: usize) {
-    //     self.counter = self.counter.saturating_sub(i);
-    // }
 }
 
 impl Component for Home {
@@ -277,30 +262,29 @@ impl Component for Home {
         Ok(())
     }
 
-    fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>> {
-        self.last_events.push(key);
-        let action = match self.mode {
-            Mode::Normal | Mode::Processing => return Ok(None),
-            Mode::Insert => match key.code {
-                KeyCode::Esc => Action::EnterNormal,
-                KeyCode::Enter => {
-                    if let Some(sender) = &self.action_tx {
-                        if let Err(e) =
-                            sender.send(Action::CompleteInput(self.input.value().to_string()))
-                        {
-                            error!("Failed to send action: {:?}", e);
-                        }
-                    }
-                    Action::EnterNormal
-                }
-                _ => {
-                    self.input.handle_event(&crossterm::event::Event::Key(key));
-                    Action::Update
-                }
-            },
-        };
-        Ok(Some(action))
-    }
+    // fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>> {
+    //     let action = match self.mode {
+    //         Mode::Normal | Mode::Processing => return Ok(None),
+    //         Mode::Insert => match key.code {
+    //             KeyCode::Esc => Action::EnterNormal,
+    //             KeyCode::Enter => {
+    //                 if let Some(sender) = &self.action_tx {
+    //                     if let Err(e) =
+    //                         sender.send(Action::CompleteInput(self.input.value().to_string()))
+    //                     {
+    //                         error!("Failed to send action: {:?}", e);
+    //                     }
+    //                 }
+    //                 Action::EnterNormal
+    //             }
+    //             _ => {
+    //                 self.input.handle_event(&crossterm::event::Event::Key(key));
+    //                 Action::Update
+    //             }
+    //         },
+    //     };
+    //     Ok(Some(action))
+    // }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
@@ -309,9 +293,9 @@ impl Component for Home {
             Action::ToggleShowHelp => self.show_help = !self.show_help,
             Action::NextItem => self.next_item(),
             Action::PreviousItem => self.previous_item(),
-            Action::CompleteInput(s) => self.search_stations(s),
+            Action::Search(s) => self.search_stations(s),
             Action::StationsFound(stations) => self.apply_stations(stations),
-            Action::PlaySelectedStation => self.play_station(),
+            Action::PlaySelectedStation => self.select_station(),
             Action::StopPlayingStation => self.stop_station(),
             // Action::StreamStarted(station) => self.start_stream(station),
             Action::EnterNormal => {
@@ -333,31 +317,49 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, rect: Rect) -> Result<()> {
+        let mut min = 3;
+
+        if self.show_help {
+            min = 4
+        }
+
         let rects = Layout::default()
             .constraints(
                 [
                     Constraint::Min(3),
                     Constraint::Percentage(100),
-                    Constraint::Min(3),
+                    Constraint::Min(min),
                 ]
                 .as_ref(),
             )
             .split(rect);
 
         // TOP
-        // TODO: create "now playing" section
-
+        // NOW PLAYING
         let mut lines = vec![];
+        let throbber = throbber_widgets_tui::Throbber::default()
+            .throbber_style(
+                ratatui::style::Style::default()
+                    .fg(ratatui::style::Color::Red)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            )
+            .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT_DOUBLE)
+            .use_type(throbber_widgets_tui::WhichUse::Spin)
+            .to_symbol_span(&self.throbber_state);
+
         let now_playing_block = Block::default()
             .borders(Borders::ALL)
             .title(Line::from(vec![Span::raw("Now Playing ")]))
             .bg(NORMAL_ROW_COLOR);
 
         if let Some(radio_station) = self.now_playing.as_ref() {
-            lines.push(Line::from(vec![Span::styled(
-                radio_station.get_name().to_owned(),
-                Style::default().fg(Color::Red),
-            )]));
+            lines.push(Line::from(vec![
+                throbber,
+                Span::styled(
+                    radio_station.get_name().to_owned(),
+                    Style::default().fg(Color::Red),
+                ),
+            ]));
         } else {
             lines.push(Line::from(vec![Span::styled(
                 "Nothing...",
@@ -369,57 +371,10 @@ impl Component for Home {
 
         f.render_widget(np_widget, rects[0]);
 
-        // let mut text: Vec<Line> = self
-        //     .text
-        //     .clone()
-        //     .iter()
-        //     .map(|l| Line::from(l.clone()))
-        //     .collect();
-        // text.insert(0, "".into());
-        // text.insert(
-        //     0,
-        //     "Type into input and hit enter to display here".dim().into(),
-        // );
-        // text.insert(0, "".into());
-        // text.insert(0, format!("Render Ticker: {}", self.render_ticker).into());
-        // text.insert(0, format!("App Ticker: {}", self.app_ticker).into());
-        // text.insert(0, format!("Counter: {}", self.counter).into());
-        // text.insert(0, "".into());
-        // text.insert(
-        //     0,
-        //     Line::from(vec![
-        //         "Press ".into(),
-        //         Span::styled("j", Style::default().fg(Color::Red)),
-        //         " or ".into(),
-        //         Span::styled("k", Style::default().fg(Color::Red)),
-        //         " to ".into(),
-        //         Span::styled("increment", Style::default().fg(Color::Yellow)),
-        //         " or ".into(),
-        //         Span::styled("decrement", Style::default().fg(Color::Yellow)),
-        //         ".".into(),
-        //     ]),
-        // );
-        // text.insert(0, "".into());
-
-        // MIDDLE - list view of stations
-        // We create two blocks, one is for the header (outer) and the other is for list (inner).
-        // let outer_block = Block::new()
-        //     .borders(Borders::NONE)
-        //     .title_alignment(Alignment::Center)
-        //     .title("Radio Stations")
-        //     .fg(TEXT_COLOR)
-        //     .bg(TODO_HEADER_BG);
         let inner_block = Block::new()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
             .bg(NORMAL_ROW_COLOR);
-        //
-        // // We get the inner area from outer_block. We'll use this area later to render the table.
-        // let outer_area = rect;
-        // let inner_area = outer_block.inner(outer_area);
-
-        // We can render the header in outer_area.
-        // outer_block.render(outer_area, buf);
 
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> = self
@@ -444,99 +399,6 @@ impl Component for Home {
 
         f.render_stateful_widget(items, rects[1], &mut self.stations.state);
 
-        // f.render_widget(
-        //     Paragraph::new(text)
-        //         .block(
-        //             Block::default()
-        //                 .title("Voxide")
-        //                 .title_alignment(Alignment::Center)
-        //                 .borders(Borders::ALL)
-        //                 .border_style(match self.mode {
-        //                     Mode::Processing => Style::default().fg(Color::Yellow),
-        //                     _ => Style::default(),
-        //                 })
-        //                 .border_type(BorderType::Rounded),
-        //         )
-        //         .style(Style::default().fg(Color::Cyan))
-        //         .alignment(Alignment::Center),
-        //     rects[0],
-        // );
-
-        let width = rects[1].width.max(3) - 3; // keep 2 for borders and 1 for cursor
-        let scroll = self.input.visual_scroll(width as usize);
-        let input = Paragraph::new(self.input.value())
-            .style(match self.mode {
-                Mode::Insert => Style::default().fg(Color::Yellow),
-                _ => Style::default(),
-            })
-            .scroll((0, scroll as u16))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(Line::from(vec![
-                        Span::raw("Search "),
-                        Span::styled("(Press ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            "/",
-                            Style::default()
-                                .add_modifier(Modifier::BOLD)
-                                .fg(Color::Gray),
-                        ),
-                        Span::styled(" to start, ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            "ESC",
-                            Style::default()
-                                .add_modifier(Modifier::BOLD)
-                                .fg(Color::Gray),
-                        ),
-                        Span::styled(" to finish)", Style::default().fg(Color::DarkGray)),
-                    ])),
-            );
-        f.render_widget(input, rects[2]);
-
-        // HELP Popup
-        if self.show_help {
-            let rect = rect.inner(Margin {
-                horizontal: 4,
-                vertical: 2,
-            });
-            f.render_widget(Clear, rect);
-            let block = Block::default()
-                .title(Line::from(vec![Span::styled(
-                    "Key Bindings",
-                    Style::default().add_modifier(Modifier::BOLD),
-                )]))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow));
-            f.render_widget(block, rect);
-            let rows = vec![
-                Row::new(vec!["j", "Up"]),
-                Row::new(vec!["k", "Down"]),
-                Row::new(vec!["/", "Search"]),
-                Row::new(vec!["ESC", "Exit Input"]),
-                Row::new(vec!["Enter", "Submit Input"]),
-                Row::new(vec!["q", "Quit"]),
-                Row::new(vec!["?", "Toggle Help"]),
-            ];
-            let table = Table::new(
-                rows,
-                [Constraint::Percentage(10), Constraint::Percentage(90)],
-            )
-            .header(
-                Row::new(vec!["Key", "Action"])
-                    .bottom_margin(1)
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
-            )
-            .column_spacing(1);
-            f.render_widget(
-                table,
-                rect.inner(Margin {
-                    vertical: 4,
-                    horizontal: 2,
-                }),
-            );
-        };
-        //
         // BOTTOM
         if self.mode == Mode::Insert {
             f.set_cursor(
@@ -545,27 +407,111 @@ impl Component for Home {
             )
         }
 
-        f.render_widget(
-            Block::default()
-                .title(
-                    ratatui::widgets::block::Title::from(format!(
-                        "{:?}",
-                        &self
-                            .last_events
-                            .iter()
-                            .map(key_event_to_string)
-                            .collect::<Vec<_>>()
-                    ))
-                    .alignment(Alignment::Right),
-                )
-                .title_style(Style::default().add_modifier(Modifier::BOLD)),
-            Rect {
-                x: rect.x + 1,
-                y: rect.height.saturating_sub(1),
-                width: rect.width.saturating_sub(2),
-                height: 1,
-            },
-        );
+        let width = rects[1].width.max(5) - 3; // keep 2 for borders and 1 for cursor
+        let mut lines = vec![];
+
+        let mut help_block = Block::default().borders(Borders::ALL).bg(NORMAL_ROW_COLOR);
+        let spacer = Span::raw("   ");
+
+        let default_help = Line::from(vec![
+            Span::styled(
+                "k",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("Up", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "j",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("Down", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "/",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("search", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "enter",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("play/stop", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "q",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("quit", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "?",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("More", Style::default().fg(Color::DarkGray)),
+        ]);
+
+        if self.show_help {
+            help_block = help_block.title("Help");
+            lines.push(Line::from(vec![
+                Span::styled(
+                    "tab",
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(Color::Gray),
+                ),
+                Span::raw(" "),
+                Span::styled("Next Field", Style::default().fg(Color::DarkGray)),
+                spacer.clone(),
+            ]));
+            lines.push(default_help);
+        } else {
+            lines.push(default_help);
+        }
+
+        let help_widget = Paragraph::new(lines).block(help_block);
+
+        f.render_widget(help_widget, rects[2]);
+
+        // f.render_widget(
+        //     Block::default()
+        //         .title(
+        //             ratatui::widgets::block::Title::from(format!(
+        //                 "{:?}",
+        //                 &self
+        //                     .last_events
+        //                     .iter()
+        //                     .map(key_event_to_string)
+        //                     .collect::<Vec<_>>()
+        //             ))
+        //             .alignment(Alignment::Right),
+        //         )
+        //         .title_style(Style::default().add_modifier(Modifier::BOLD)),
+        //     Rect {
+        //         x: rect.x + 1,
+        //         y: rect.height.saturating_sub(1),
+        //         width: rect.width.saturating_sub(2),
+        //         height: 1,
+        //     },
+        // );
 
         Ok(())
     }

@@ -1,4 +1,5 @@
 use radiobrowser::{RadioBrowserAPI, StationOrder};
+use serde::{Deserialize, Serialize};
 
 use crate::errors::Error;
 
@@ -26,6 +27,7 @@ impl RadioApi {
             .order(Order::Votes.into());
 
         for param in params.into_iter() {
+            tracing::info!(?param, "building search");
             match param {
                 SearchParam::Name(name) => builder = builder.name(name),
                 SearchParam::Language(language) => builder = builder.language(language),
@@ -48,7 +50,7 @@ impl RadioApi {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Order {
     Name,
     Url,
@@ -95,7 +97,7 @@ impl From<Order> for StationOrder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SearchParam {
     Name(String),
     Country(String),

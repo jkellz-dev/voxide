@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     action::Action,
-    components::{fps::FpsCounter, home::Home, Component},
+    components::{fps::FpsCounter, home::Home, search::Search, Component},
     config::Config,
     mode::Mode,
     tui,
@@ -27,12 +27,13 @@ impl App {
     pub async fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
         let home = Home::new().await?;
         let fps = FpsCounter::default();
+        let search = Search::default();
         let config = Config::new()?;
         let mode = Mode::Home;
         Ok(Self {
             tick_rate,
             frame_rate,
-            components: vec![Box::new(home), Box::new(fps)],
+            components: vec![Box::new(home), Box::new(search), Box::new(fps)],
             should_quit: false,
             should_suspend: false,
             config,
@@ -108,6 +109,7 @@ impl App {
                     Action::Quit => self.should_quit = true,
                     Action::Suspend => self.should_suspend = true,
                     Action::Resume => self.should_suspend = false,
+                    Action::Mode(mode) => self.mode = mode,
                     Action::Resize(w, h) => {
                         tui.resize(Rect::new(0, 0, w, h))?;
                         tui.draw(|f| {

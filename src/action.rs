@@ -6,7 +6,10 @@ use serde::{
 };
 use strum::Display;
 
-use crate::models::RadioStation;
+use crate::{
+    mode::Mode as AppMode,
+    models::{RadioStation, SearchParam},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
@@ -22,13 +25,16 @@ pub enum Action {
     ToggleShowHelp,
     NextItem,
     PreviousItem,
-    CompleteInput(String),
     EnterNormal,
     EnterInsert,
     EnterProcessing,
     ExitProcessing,
     Update,
+    Search(Vec<SearchParam>),
     StationsFound(Vec<RadioStation>),
     PlaySelectedStation,
     StopPlayingStation,
+    Mode(AppMode),
+    SearchMode,
+    HomeMode,
 }

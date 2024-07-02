@@ -1,16 +1,25 @@
 {
   "keybindings": {
     "Home": {
-      "<q>": "Quit", // Quit the application
       "<j>": "NextItem",
       "<k>": "PreviousItem",
       "<enter>": "PlaySelectedStation",
       "<x>": "StopPlayingStation",
       "<?>": "ToggleShowHelp",
-      "</>": "EnterInsert",
+      "</>": "SearchMode",
+      "<q>": "Quit", // Quit the application
       "<Ctrl-d>": "Quit", // Another way to quit
       "<Ctrl-c>": "Quit", // Yet another way to quit
       "<Ctrl-z>": "Suspend", // Suspend the application
     },
+    "Search": {
+      "</>": "HomeMode",
+      "<esc>": "HomeMode",
+      "<q>": "Quit", // Quit the application
+      "<Ctrl-d>": "Quit", // Another way to quit
+      "<Ctrl-c>": "Quit", // Yet another way to quit
+      "<Ctrl-z>": "Suspend", // Suspend the application
+
+    }
   },
 }

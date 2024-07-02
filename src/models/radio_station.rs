@@ -1,4 +1,9 @@
-use std::{io::Write, sync::Arc, thread, time::Duration};
+use std::{
+    io::Write,
+    sync::{mpsc::RecvError, Arc},
+    thread,
+    time::Duration,
+};
 
 use futures::FutureExt;
 use radiobrowser::ApiStation;
@@ -29,17 +34,27 @@ pub struct State {
     sink: Arc<Mutex<Sink>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RadioStation {
     pub name: String,
+    pub stationuuid: String,
     pub url: String,
+    pub codec: String,
+    pub bitrate: u32,
+    pub homepage: String,
+    pub tags: String,
+    pub countrycode: String,
+    pub languagecodes: Option<String>,
+    pub votes: i32,
 }
 
 impl RadioStation {
-    pub fn new<T: ToString>(url: T, name: T) -> Self {
+    pub fn new<T: ToString>(url: T, stationuuid: T, name: T) -> Self {
         Self {
             name: name.to_string(),
+            stationuuid: stationuuid.to_string(),
             url: url.to_string(),
+            ..Default::default()
         }
     }
     pub async fn play(
@@ -55,7 +70,7 @@ impl RadioStation {
             .send()
             .await?;
 
-        tracing::info!(?response, "got response");
+        tracing::debug!(?response, "got response");
 
         if response.status() != 200 {
             tracing::error!(?response, "failed to get stream");
@@ -80,8 +95,8 @@ impl RadioStation {
                                     let mut guard = buf.lock().expect("failed to lock buffer");
                                     let result = guard.write(chunk.as_ref());
                                     match result {
-                                        Ok(n) => tracing::trace!("pushed chunk: {}", n),
-                                        Err(e) => tracing::error!("error {:?}", e),
+                                        Ok(n) => tracing::trace!(bytes=?n, "pushed chunk"),
+                                        Err(e) => tracing::error!(error=?e, "failed to get chunk"),
                                     }
                                 }
                             }
@@ -99,45 +114,38 @@ impl RadioStation {
             }
         });
 
-        tracing::info!("waiting for chunks");
+        tracing::debug!("waiting for chunks");
 
         while audio_stream.len()? < 1024 * 10 {
             tokio::task::yield_now().await;
         }
 
-        let blocking_task = tokio::task::spawn_blocking(move || {
+        tracing::info!("got enough chunks to start");
+
+        // Spin off the stream handling to a task that allows blocking. This will then not use the
+        // Tokio thread pool, but instead use a CPU managed thread.
+        tokio::task::spawn_blocking(move || {
             // This is running on a thread where blocking is fine.
+            tracing::info!("streaming task spawned");
 
             let (stream, stream_handle) = OutputStream::try_default().unwrap();
             let sink = Sink::try_new(&stream_handle).unwrap();
 
-            tracing::info!("setting up decoder");
+            tracing::debug!("setting up decoder");
             let decoder = Decoder::new_mp3(audio_stream).unwrap();
             sink.append(decoder);
 
-            play_shutdown_rx.blocking_recv();
-            // sink.sleep_until_end();
-            tracing::info!("done playing");
+            tracing::info!("playing....");
+            let _ = play_shutdown_rx
+                .blocking_recv()
+                .or_else(|error| -> Result<(), _> {
+                    tracing::error!(?error, "failed to receive play shutdown");
+                    Ok::<(), RecvError>(())
+                });
+
+            tracing::info!("done playing....");
         });
 
-        tracing::info!("playing");
-
-        // let _ = shutdown_rx.blocking_recv();
-        //
-        // sink.stop();
-        //
-        // let _ = shutdown_send.send(());
-
-        // tokio::select! {
-        //     _ = shutdown_rx.recv() => {
-        //         tracing::info!("shutting down");
-        //         sink.stop();
-        //     }
-        // }
-
-        // sink.sleep_until_end();
-
-        // tracing::info!("done playing");
         Ok(())
     }
 
@@ -147,13 +155,6 @@ impl RadioStation {
             _ => ALT_ROW_COLOR,
         };
         let line = Line::styled(format!(" * {} - {}", self.name, self.url), TEXT_COLOR);
-        // let line = match self.status {
-        //     Status::Todo => Line::styled(format!(" ☐ {}", self.todo), TEXT_COLOR),
-        //     Status::Completed => Line::styled(
-        //         format!(" ✓ {}", self.todo),
-        //         (COMPLETED_TEXT_COLOR, bg_color),
-        //     ),
-        // };
 
         let list_item = ListItem::new(line);
         list_item.bg(bg_color)
@@ -164,7 +165,15 @@ impl From<ApiStation> for RadioStation {
     fn from(value: ApiStation) -> Self {
         Self {
             name: value.name,
+            stationuuid: value.stationuuid,
             url: value.url,
+            codec: value.codec,
+            bitrate: value.bitrate,
+            homepage: value.homepage,
+            tags: value.tags,
+            countrycode: value.countrycode,
+            languagecodes: value.languagecodes,
+            votes: value.votes,
         }
     }
 }
