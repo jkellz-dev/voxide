@@ -12,6 +12,10 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+      - name: Install Alsa
+        run: |
+          sudo apt-get update
+          sudo apt install libasound2-dev
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
