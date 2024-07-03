@@ -1,6 +1,7 @@
 use std::{collections::HashMap, str::FromStr, time::Instant};
 
 use color_eyre::eyre::Result;
+use color_eyre::owo_colors::OwoColorize;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
@@ -158,6 +159,13 @@ impl Component for Search {
             Action::HomeMode => {
                 self.show_search = false;
                 self.input_mode = InputMode::None;
+                self.search_name.reset();
+                self.search_country.reset();
+                self.search_language.reset();
+                self.search_tags.reset();
+                self.search_limit.reset();
+                self.search_order.reset();
+                self.search_reverse.reset();
                 result = Some(Action::Mode(AppMode::Home));
             }
             _ => (),
@@ -291,10 +299,26 @@ impl Component for Search {
                 vertical: 10,
             });
 
-            let wrapper = Layout::new(Direction::Vertical, [Constraint::Max(20)])
-                .horizontal_margin(2)
-                .vertical_margin(1)
-                .split(rect);
+            let rect = search_popup(33, 20, rect);
+
+            let wrapper = Layout::new(
+                Direction::Vertical,
+                [Constraint::Max(15), Constraint::Min(0)],
+            )
+            .horizontal_margin(2)
+            .vertical_margin(1)
+            .split(rect);
+
+            f.render_widget(Clear, wrapper[0]);
+
+            let block = Block::default()
+                .title(Line::from(vec![Span::styled(
+                    "Search",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )]))
+                .bg(Color::Black);
+
+            f.render_widget(block, rect);
 
             let layout = Layout::new(
                 Direction::Vertical,
@@ -335,13 +359,7 @@ impl Component for Search {
             )
             .split(layout[3]);
 
-            f.render_widget(Clear, rect);
-
-            let block = Block::default().title(Line::from(vec![Span::styled(
-                "Search",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]));
-            f.render_widget(block, rect);
+            // f.render_widget(Clear, rect);
 
             let width = first_row[0].width.max(3) - 3; // keep 2 for borders and 1 for cursor
             let name_block = Paragraph::new(self.search_name.value())
@@ -558,4 +576,33 @@ impl Component for Search {
 
         Ok(())
     }
+}
+
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn search_popup(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::vertical({
+        if r.height > 60 {
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Max(14),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+        } else {
+            [Constraint::Min(5), Constraint::Min(14), Constraint::Min(0)]
+        }
+    })
+    .split(r);
+
+    Layout::horizontal({
+        if r.width > 75 {
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+        } else {
+            [Constraint::Min(5), Constraint::Min(14), Constraint::Min(5)]
+        }
+    })
+    .split(popup_layout[1])[1]
 }
