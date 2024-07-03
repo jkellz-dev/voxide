@@ -3,11 +3,10 @@ name: CD # Continuous Deployment
 on:
   push:
     tags:
-      - '[v]?[0-9]+.[0-9]+.[0-9]+'
+      - "[v]?[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   publish:
-
     name: Publishing for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
@@ -60,6 +59,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Alsa
+        run: |
+          if [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
+            sudo apt-get update
+            sudo apt install libasound2-dev
+          fi
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -80,7 +86,6 @@ jobs:
           toolchain: stable
 
           args: --release --target ${{ matrix.target }}
-
 
       - name: install strip command
         shell: bash
@@ -132,9 +137,7 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary-name }}-*.sha256
 
         env:
-
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
   publish-cargo:
     name: Publishing to Cargo
@@ -147,6 +150,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo publish
         env:
-
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
