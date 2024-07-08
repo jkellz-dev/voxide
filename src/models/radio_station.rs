@@ -18,7 +18,10 @@ use rodio::{Decoder, OutputStream, Sink};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
-use crate::errors::Error;
+use crate::{
+    components::home::{VOLUME_MAX, VOLUME_MIN},
+    errors::Error,
+};
 
 use super::audio_stream::AudioStream;
 
@@ -144,6 +147,7 @@ impl RadioStation {
                     tokio::select! {
                         vol = volume_rx.recv() => {
                             if let Ok(volume) = vol {
+                                let volume = volume.clamp(VOLUME_MIN, VOLUME_MAX);
                                 sink.set_volume(volume);
                             }
                         },

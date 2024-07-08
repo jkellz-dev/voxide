@@ -34,6 +34,10 @@ const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
 const TEXT_COLOR: Color = tailwind::SLATE.c200;
 const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
 
+pub(crate) const VOLUME_MIN: f32 = 0.0;
+pub(crate) const VOLUME_MAX: f32 = 1.0;
+const VOLUME_INCREMENT: f32 = 0.05;
+
 pub struct StreamState {
     station: RadioStation,
     stream_handle: JoinHandle<()>,
@@ -276,8 +280,8 @@ impl Home {
 
     /// Increase volume to a max of `1.0`
     pub fn increase_volume(&mut self) {
-        self.volume += 0.05;
-        self.volume = self.volume.min(1.0);
+        self.volume += VOLUME_INCREMENT;
+        self.volume = self.volume.min(VOLUME_MAX);
 
         if let Some(volume_tx) = &self.volume_tx {
             let _ = volume_tx.send(self.volume);
@@ -286,8 +290,8 @@ impl Home {
 
     /// Decrease volume, to a minimum of `0.0`
     pub fn decrease_volume(&mut self) {
-        self.volume -= 0.05;
-        self.volume = self.volume.max(0.0);
+        self.volume -= VOLUME_INCREMENT;
+        self.volume = self.volume.max(VOLUME_MIN);
 
         if let Some(volume_tx) = &self.volume_tx {
             let _ = volume_tx.send(self.volume);
