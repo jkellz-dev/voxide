@@ -37,4 +37,6 @@ pub enum Action {
     Mode(AppMode),
     SearchMode,
     HomeMode,
+    IncreaseVolume,
+    DecreaseVolume,
 }

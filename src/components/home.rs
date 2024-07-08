@@ -143,6 +143,8 @@ pub struct Home {
     pub action_tx: Option<UnboundedSender<Action>>,
     pub keymap: HashMap<KeyEvent, Action>,
     pub text: Vec<String>,
+    pub volume: f32,
+    pub volume_tx: Option<broadcast::Sender<f32>>,
 }
 
 impl Home {
@@ -161,6 +163,8 @@ impl Home {
             action_tx: Default::default(),
             keymap: Default::default(),
             text: Default::default(),
+            volume: 1.0,
+            volume_tx: None,
         })
     }
 
@@ -227,11 +231,17 @@ impl Home {
 
             let (shutdown_tx, mut _shutdown_rx) = broadcast::channel(1);
             let download_shutdown_rx = shutdown_tx.subscribe();
-            let play_shutdown_rx = shutdown_tx.subscribe();
+
+            let volume = self.volume;
+            let (volume_tx, volume_rx) = broadcast::channel::<f32>(10);
+            self.volume_tx = Some(volume_tx);
+
+            let play_shutdown_tx = shutdown_tx.clone();
+
             let handle = tokio::spawn(async move {
                 tracing::info!("Starting play");
                 play_station
-                    .play(download_shutdown_rx, play_shutdown_rx)
+                    .play(download_shutdown_rx, play_shutdown_tx, volume, volume_rx)
                     .await
                     .unwrap();
                 tracing::info!("Done playing");
@@ -253,6 +263,27 @@ impl Home {
             state.stream_handle.abort()
         }
         self.now_playing = None;
+        self.volume_tx = None;
+    }
+
+    /// Increase volume to a max of `1.0`
+    pub fn increase_volume(&mut self) {
+        self.volume += 0.05;
+        self.volume = self.volume.min(1.0);
+
+        if let Some(volume_tx) = &self.volume_tx {
+            let _ = volume_tx.send(self.volume);
+        }
+    }
+
+    /// Decrease volume, to a minimum of `0.0`
+    pub fn decrease_volume(&mut self) {
+        self.volume -= 0.05;
+        self.volume = self.volume.max(0.0);
+
+        if let Some(volume_tx) = &self.volume_tx {
+            let _ = volume_tx.send(self.volume);
+        }
     }
 }
 
@@ -311,6 +342,12 @@ impl Component for Home {
                 // TODO: Make this go to previous mode instead
                 self.mode = Mode::Normal;
             }
+            Action::IncreaseVolume => {
+                self.increase_volume();
+            }
+            Action::DecreaseVolume => {
+                self.decrease_volume();
+            }
             _ => (),
         }
         Ok(None)
@@ -347,9 +384,23 @@ impl Component for Home {
             .use_type(throbber_widgets_tui::WhichUse::Spin)
             .to_symbol_span(&self.throbber_state);
 
+        let volume_bar_length = 20;
+        let filled_char = "█";
+        let empty_char = "░";
+        let filled_count = ((self.volume / 1.0) * volume_bar_length as f32) as usize;
+        let empty_count = volume_bar_length - filled_count;
+        let volume_bar = format!(
+            "{}{}",
+            filled_char.repeat(filled_count),
+            empty_char.repeat(empty_count)
+        );
+
         let now_playing_block = Block::default()
             .borders(Borders::ALL)
             .title(Line::from(vec![Span::raw("Now Playing ")]))
+            .title_bottom(
+                Line::from(vec![Span::raw(format!("Volume: {volume_bar}"))]).right_aligned(),
+            )
             .bg(NORMAL_ROW_COLOR);
 
         if let Some(radio_station) = self.now_playing.as_ref() {
@@ -458,6 +509,24 @@ impl Component for Home {
             ),
             Span::raw(" "),
             Span::styled("quit", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "↑",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("Volume Up", Style::default().fg(Color::DarkGray)),
+            spacer.clone(),
+            Span::styled(
+                "↓",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Gray),
+            ),
+            Span::raw(" "),
+            Span::styled("Volume Down", Style::default().fg(Color::DarkGray)),
             spacer.clone(),
             Span::styled(
                 "?",

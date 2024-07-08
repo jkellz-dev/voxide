@@ -60,7 +60,9 @@ impl RadioStation {
     pub async fn play(
         &mut self,
         mut download_shutdown_rx: broadcast::Receiver<()>,
-        mut play_shutdown_rx: broadcast::Receiver<()>,
+        play_shutdown_tx: broadcast::Sender<()>,
+        initial_volume: f32,
+        mut volume_rx: broadcast::Receiver<f32>,
     ) -> Result<(), Error> {
         tracing::info!(station = ?self, "playing");
         let client = reqwest::Client::new();
@@ -122,6 +124,8 @@ impl RadioStation {
 
         tracing::info!("got enough chunks to start");
 
+        let mut play_shutdown_rx = play_shutdown_tx.subscribe();
+
         // Spin off the stream handling to a task that allows blocking. This will then not use the
         // Tokio thread pool, but instead use a CPU managed thread.
         tokio::task::spawn_blocking(move || {
@@ -134,6 +138,25 @@ impl RadioStation {
             tracing::debug!("setting up decoder");
             let decoder = Decoder::new_mp3(audio_stream).unwrap();
             sink.append(decoder);
+            sink.set_volume(initial_volume);
+
+            let mut volume_shutdown_rx = play_shutdown_tx.subscribe();
+
+            tokio::task::spawn(async move {
+                loop {
+                    tokio::select! {
+                        vol = volume_rx.recv() => {
+                            if let Ok(volume) = vol {
+                                sink.set_volume(volume);
+                            }
+                        },
+                        _ = volume_shutdown_rx.recv() => {
+                            tracing::info!("Shutting down volume thread");
+                            break;
+                        }
+                    }
+                }
+            });
 
             tracing::info!("playing....");
             let _ = play_shutdown_rx
