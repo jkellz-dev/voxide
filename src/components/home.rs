@@ -231,6 +231,8 @@ impl Home {
 
             let (shutdown_tx, mut _shutdown_rx) = broadcast::channel(1);
             let download_shutdown_rx = shutdown_tx.subscribe();
+            let play_shutdown_rx = shutdown_tx.subscribe();
+            let volume_shutdown_rx = shutdown_tx.subscribe();
 
             let volume = self.volume;
             let (volume_tx, volume_rx) = broadcast::channel::<f32>(10);
@@ -241,7 +243,13 @@ impl Home {
             let handle = tokio::spawn(async move {
                 tracing::info!("Starting play");
                 play_station
-                    .play(download_shutdown_rx, play_shutdown_tx, volume, volume_rx)
+                    .play(
+                        download_shutdown_rx,
+                        play_shutdown_rx,
+                        volume,
+                        volume_rx,
+                        volume_shutdown_rx,
+                    )
                     .await
                     .unwrap();
                 tracing::info!("Done playing");
