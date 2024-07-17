@@ -18,7 +18,10 @@ use rodio::{Decoder, OutputStream, Sink};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
-use crate::errors::Error;
+use crate::{
+    components::home::{VOLUME_MAX, VOLUME_MIN},
+    errors::Error,
+};
 
 use super::audio_stream::AudioStream;
 
@@ -61,6 +64,9 @@ impl RadioStation {
         &mut self,
         mut download_shutdown_rx: broadcast::Receiver<()>,
         mut play_shutdown_rx: broadcast::Receiver<()>,
+        initial_volume: f32,
+        mut volume_rx: broadcast::Receiver<f32>,
+        mut volume_shutdown_rx: broadcast::Receiver<()>,
     ) -> Result<(), Error> {
         tracing::info!(station = ?self, "playing");
         let client = reqwest::Client::new();
@@ -134,6 +140,24 @@ impl RadioStation {
             tracing::debug!("setting up decoder");
             let decoder = Decoder::new_mp3(audio_stream).unwrap();
             sink.append(decoder);
+            sink.set_volume(initial_volume);
+
+            tokio::task::spawn(async move {
+                loop {
+                    tokio::select! {
+                        vol = volume_rx.recv() => {
+                            if let Ok(volume) = vol {
+                                let volume = volume.clamp(VOLUME_MIN, VOLUME_MAX);
+                                sink.set_volume(volume);
+                            }
+                        },
+                        _ = volume_shutdown_rx.recv() => {
+                            tracing::info!("Shutting down volume thread");
+                            break;
+                        }
+                    }
+                }
+            });
 
             tracing::info!("playing....");
             let _ = play_shutdown_rx
