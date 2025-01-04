@@ -1,0 +1,8 @@
+[env]
+VOXIDE_CONFIG = "./.config"
+VOXIDE_DATA = "./.data"
+VOXIDE_LOG_LEVEL = "debug"
+
+[tools]
+"cargo:rusty-hook" = "latest"
+rust = "1.82.0"
