@@ -57,12 +57,11 @@ pub fn initialize_panic_handler() -> Result<()> {
         #[cfg(not(debug_assertions))]
         {
             use human_panic::{handle_dump, print_msg, Metadata};
-            let meta = Metadata {
-                version: env!("CARGO_PKG_VERSION").into(),
-                name: env!("CARGO_PKG_NAME").into(),
-                authors: env!("CARGO_PKG_AUTHORS").replace(':', ", ").into(),
-                homepage: env!("CARGO_PKG_HOMEPAGE").into(),
-            };
+            use std::borrow::Cow;
+            let meta = Metadata::new(
+                Cow::Borrowed(env!("CARGO_PKG_NAME")),
+                Cow::Borrowed(env!("CARGO_PKG_VERSION")),
+            );
 
             let file_path = handle_dump(&meta, panic_info);
             // prints human-panic message

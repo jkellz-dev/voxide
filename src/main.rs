@@ -34,6 +34,13 @@ async fn tokio_main() -> Result<()> {
     Ok(())
 }
 
+/// Entry point for the application.
+///
+/// Initializes the async runtime and runs the main application logic.
+///
+/// # Errors
+///
+/// Returns an error if application initialization or execution fails.
 #[tokio::main]
 async fn main() -> Result<()> {
     if let Err(e) = tokio_main().await {

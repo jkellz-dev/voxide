@@ -39,17 +39,38 @@ pub enum Event {
     Resize(u16, u16),
 }
 
+/// Terminal User Interface (TUI) handler for the application.
+///
+/// This struct manages the terminal, event channels, and runtime tasks for the application's UI.
 pub struct Tui {
+    /// The terminal instance used for rendering.
     pub terminal: ratatui::Terminal<CrosstermBackend<Stderr>>,
+    /// The background task handle for the TUI event loop.
     pub task: JoinHandle<()>,
+    /// Token used to cancel the TUI event loop.
     pub cancellation_token: CancellationToken,
+    /// Receiver for incoming UI events.
     pub event_rx: UnboundedReceiver<Event>,
+    /// Sender for outgoing UI events.
     pub event_tx: UnboundedSender<Event>,
+    /// The frame rate (frames per second) for rendering.
     pub frame_rate: f64,
+    /// The tick rate (ticks per second) for event polling.
     pub tick_rate: f64,
 }
 
 impl Tui {
+    /// Creates a new [`Tui`] instance with default tick and frame rates.
+    ///
+    /// Initializes the terminal, event channels, and background task for the TUI.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the terminal cannot be initialized.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the initialized [`Tui`] instance on success.
     pub fn new() -> Result<Self> {
         let tick_rate = 4.0;
         let frame_rate = 60.0;
@@ -68,14 +89,27 @@ impl Tui {
         })
     }
 
+    /// Sets the tick rate (ticks per second) for the TUI event loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_rate` - The new tick rate in Hertz.
     pub fn tick_rate(&mut self, tick_rate: f64) {
         self.tick_rate = tick_rate;
     }
 
+    /// Sets the frame rate (frames per second) for rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `frame_rate` - The new frame rate in Hertz.
     pub fn frame_rate(&mut self, frame_rate: f64) {
         self.frame_rate = frame_rate;
     }
 
+    /// Starts the TUI event loop and rendering process.
+    ///
+    /// This method begins polling for events and rendering frames at the configured rates.
     pub fn start(&mut self) {
         let tick_delay = std::time::Duration::from_secs_f64(1.0 / self.tick_rate);
         let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);

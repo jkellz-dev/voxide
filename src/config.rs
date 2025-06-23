@@ -34,6 +34,17 @@ pub struct Config {
 }
 
 impl Config {
+    /// Creates a new [`Config`] instance by loading configuration from default and user-provided files.
+    ///
+    /// This method loads configuration from built-in defaults and merges them with any user configuration files found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if configuration loading or parsing fails.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the initialized [`Config`] instance on success.
     pub fn new() -> Result<Self, config::ConfigError> {
         let default_config: Config = json5::from_str(CONFIG).unwrap();
         let data_dir = crate::utils::get_data_dir();
@@ -87,6 +98,9 @@ impl Config {
     }
 }
 
+/// Stores key bindings for different application modes.
+///
+/// This struct maps each [`Mode`] to a set of key sequences and their corresponding [`Action`]s.
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct KeyBindings(pub HashMap<Mode, HashMap<Vec<KeyEvent>, Action>>);
 
@@ -283,6 +297,9 @@ pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
     sequences.into_iter().map(parse_key_event).collect()
 }
 
+/// Stores style definitions for different application modes.
+///
+/// This struct maps each [`Mode`] to a set of style keys and their corresponding [`Style`]s.
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct Styles(pub HashMap<Mode, HashMap<String, Style>>);
 

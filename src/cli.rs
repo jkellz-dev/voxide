@@ -4,9 +4,13 @@ use clap::Parser;
 
 use crate::utils::version;
 
+/// Command-line interface options for the application.
+///
+/// This struct defines the arguments that can be passed to the application via the command line.
 #[derive(Parser, Debug)]
 #[command(author, version = version(), about)]
 pub struct Cli {
+    /// Tick rate, i.e. number of ticks per second.
     #[arg(
         short,
         long,
@@ -16,6 +20,7 @@ pub struct Cli {
     )]
     pub tick_rate: f64,
 
+    /// Frame rate, i.e. number of frames per second.
     #[arg(
         short,
         long,

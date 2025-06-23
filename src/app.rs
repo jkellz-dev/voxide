@@ -13,17 +13,39 @@ use crate::{
 };
 
 pub struct App {
+    /// Application configuration settings.
     pub config: Config,
+    /// The interval (in Hz) at which the application's tick events occur.
     pub tick_rate: f64,
+    /// The interval (in Hz) at which the application's frames are rendered.
     pub frame_rate: f64,
+    /// The list of UI components managed by the application.
     pub components: Vec<Box<dyn Component>>,
+    /// Indicates whether the application should quit.
     pub should_quit: bool,
+    /// Indicates whether the application should suspend (e.g., for shelling out).
     pub should_suspend: bool,
+    /// The current mode of the application.
     pub mode: Mode,
+    /// Key events received during the last tick.
     pub last_tick_key_events: Vec<KeyEvent>,
 }
 
 impl App {
+    /// Creates a new instance of [`App`] with the specified tick and frame rates.
+    ///
+    /// # Arguments
+    ///
+    /// * `tick_rate` - The interval (in Hz) at which the application's tick events occur.
+    /// * `frame_rate` - The interval (in Hz) at which the application's frames are rendered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any of the component initializations or configuration loading fails.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the initialized [`App`] instance on success.
     pub async fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
         let home = Home::new().await?;
         let fps = FpsCounter::default();
@@ -42,6 +64,18 @@ impl App {
         })
     }
 
+    /// Runs the main application loop, handling events and updating the UI.
+    ///
+    /// This method initializes the TUI, processes actions, and manages the application's
+    /// event-driven workflow until termination is requested.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the TUI fails to initialize or if any event loop operation fails.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] indicating success or failure of the application run.
     pub async fn run(&mut self) -> Result<()> {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
