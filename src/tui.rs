@@ -3,6 +3,53 @@ use std::{
     ops::{Deref, DerefMut},
     time::Duration,
 };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+    use std::time::Instant;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_input_handler_key_event_immediate() {
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        // Create a dummy receiver for Tui, keep the real one for the test
+        let (_dummy_tx, dummy_rx) = mpsc::unbounded_channel();
+        let mut tui =
+            Tui::new_with_channels(event_tx.clone(), dummy_rx).expect("Failed to create Tui");
+        tui.tick_rate(60.0);
+        tui.frame_rate(60.0);
+        tui.start();
+
+        let key_event = KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        event_tx.send(Event::Key(key_event)).unwrap();
+
+        let start = Instant::now();
+        let received = tokio::time::timeout(std::time::Duration::from_millis(20), async {
+            while let Some(event) = event_rx.recv().await {
+                if let Event::Key(key) = event {
+                    if key.code == KeyCode::Char('a') {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+        .await
+        .unwrap();
+
+        assert!(received, "Key event was not processed immediately");
+        assert!(
+            start.elapsed().as_millis() < 20,
+            "Key event processing was not immediate"
+        );
+    }
+}
 
 use color_eyre::eyre::Result;
 use futures::{FutureExt, StreamExt};
@@ -88,6 +135,41 @@ impl Tui {
             tick_rate,
         })
     }
+    /// Creates a [`Tui`] instance with externally provided event channels (for testing).
+    ///
+    /// This method is primarily used for testing, allowing custom event channels to be injected.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_tx` - The sender for outgoing [`Event`]s.
+    /// * `event_rx` - The receiver for incoming [`Event`]s.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the terminal cannot be initialized.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the initialized [`Tui`] instance on success.
+    pub fn new_with_channels(
+        event_tx: UnboundedSender<Event>,
+        event_rx: UnboundedReceiver<Event>,
+    ) -> Result<Self> {
+        let tick_rate = 4.0;
+        let frame_rate = 60.0;
+        let terminal = ratatui::Terminal::new(CrosstermBackend::new(stderr()))?;
+        let cancellation_token = CancellationToken::new();
+        let task = tokio::spawn(async {});
+        Ok(Self {
+            terminal,
+            task,
+            cancellation_token,
+            event_rx,
+            event_tx,
+            frame_rate,
+            tick_rate,
+        })
+    }
 
     /// Sets the tick rate (ticks per second) for the TUI event loop.
     ///
@@ -117,57 +199,69 @@ impl Tui {
         self.cancellation_token = CancellationToken::new();
         let _cancellation_token = self.cancellation_token.clone();
         let _event_tx = self.event_tx.clone();
-        self.task = tokio::spawn(async move {
+        // Spawn dedicated input handler
+        let input_event_tx = _event_tx.clone();
+        let input_cancellation_token = _cancellation_token.clone();
+        tokio::spawn(async move {
             let mut reader = crossterm::event::EventStream::new();
+            loop {
+                tokio::select! {
+                    _ = input_cancellation_token.cancelled() => {
+                        break;
+                    }
+                    maybe_event = reader.next() => {
+                        match maybe_event {
+                            Some(Ok(evt)) => {
+                                match evt {
+                                    CrosstermEvent::Key(key) => {
+                                        // Only send KeyEvent if it's a fresh Press (not Repeat)
+                                        if key.kind == KeyEventKind::Press && key.state == crossterm::event::KeyEventState::NONE {
+                                            input_event_tx.send(Event::Key(key)).unwrap();
+                                        }
+                                    },
+                                    CrosstermEvent::Mouse(mouse) => {
+                                        input_event_tx.send(Event::Mouse(mouse)).unwrap();
+                                    },
+                                    CrosstermEvent::Resize(x, y) => {
+                                        input_event_tx.send(Event::Resize(x, y)).unwrap();
+                                    },
+                                    CrosstermEvent::FocusLost => {
+                                        input_event_tx.send(Event::FocusLost).unwrap();
+                                    },
+                                    CrosstermEvent::FocusGained => {
+                                        input_event_tx.send(Event::FocusGained).unwrap();
+                                    },
+                                    CrosstermEvent::Paste(s) => {
+                                        input_event_tx.send(Event::Paste(s)).unwrap();
+                                    },
+                                }
+                            }
+                            Some(Err(_)) => {
+                                input_event_tx.send(Event::Error).unwrap();
+                            }
+                            None => {},
+                        }
+                    }
+                }
+            }
+        });
+
+        // Main loop for tick/render/cancellation
+        self.task = tokio::spawn(async move {
             let mut tick_interval = tokio::time::interval(tick_delay);
             let mut render_interval = tokio::time::interval(render_delay);
             _event_tx.send(Event::Init).unwrap();
             loop {
-                let tick_delay = tick_interval.tick();
-                let render_delay = render_interval.tick();
-                let crossterm_event = reader.next().fuse();
                 tokio::select! {
-                  _ = _cancellation_token.cancelled() => {
-                    break;
-                  }
-                  maybe_event = crossterm_event => {
-                    match maybe_event {
-                      Some(Ok(evt)) => {
-                        match evt {
-                          CrosstermEvent::Key(key) => {
-                            if key.kind == KeyEventKind::Press {
-                              _event_tx.send(Event::Key(key)).unwrap();
-                            }
-                          },
-                          CrosstermEvent::Mouse(mouse) => {
-                            _event_tx.send(Event::Mouse(mouse)).unwrap();
-                          },
-                          CrosstermEvent::Resize(x, y) => {
-                            _event_tx.send(Event::Resize(x, y)).unwrap();
-                          },
-                          CrosstermEvent::FocusLost => {
-                            _event_tx.send(Event::FocusLost).unwrap();
-                          },
-                          CrosstermEvent::FocusGained => {
-                            _event_tx.send(Event::FocusGained).unwrap();
-                          },
-                          CrosstermEvent::Paste(s) => {
-                            _event_tx.send(Event::Paste(s)).unwrap();
-                          },
-                        }
-                      }
-                      Some(Err(_)) => {
-                        _event_tx.send(Event::Error).unwrap();
-                      }
-                      None => {},
+                    _ = _cancellation_token.cancelled() => {
+                        break;
                     }
-                  },
-                  _ = tick_delay => {
-                      _event_tx.send(Event::Tick).unwrap();
-                  },
-                  _ = render_delay => {
-                      _event_tx.send(Event::Render).unwrap();
-                  },
+                    _ = tick_interval.tick() => {
+                        _event_tx.send(Event::Tick).unwrap();
+                    }
+                    _ = render_interval.tick() => {
+                        _event_tx.send(Event::Render).unwrap();
+                    }
                 }
             }
         });
