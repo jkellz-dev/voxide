@@ -157,7 +157,12 @@ impl Tui {
     ) -> Result<Self> {
         let tick_rate = 4.0;
         let frame_rate = 60.0;
-        let terminal = ratatui::Terminal::new(CrosstermBackend::new(stderr()))?;
+        let terminal = ratatui::Terminal::with_options(
+            CrosstermBackend::new(stderr()),
+            ratatui::TerminalOptions {
+                viewport: ratatui::Viewport::Fixed(ratatui::prelude::Rect::new(0, 0, 80, 24)),
+            },
+        )?;
         let cancellation_token = CancellationToken::new();
         let task = tokio::spawn(async {});
         Ok(Self {

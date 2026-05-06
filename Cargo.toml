@@ -1,32 +1,32 @@
 [package]
-name = "voxide"
-version = "0.1.4"
-edition = "2021"
-description = "A Streaming Radio Player TUI"
-repository = "https://github.com/jkellz-dev/voxide"
-homepage = "https://github.com/jkellz-dev/voxide"
 authors = ["Jonathan Kellenberg <jonathan@jkellz.dev>"]
-keywords = ["streaming radio", "audio", "tui", "terminal"]
-categories = ["audio", "radio", "player", "music", "tui"]
-readme = "README.md"
 build = "build.rs"
+categories = ["audio", "music", "player", "radio", "tui"]
+description = "A Streaming Radio Player TUI"
+edition = "2021"
+homepage = "https://github.com/jkellz-dev/voxide"
+keywords = ["audio", "streaming radio", "terminal", "tui"]
+name = "voxide"
+readme = "README.md"
+repository = "https://github.com/jkellz-dev/voxide"
+version = "0.1.4"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = { version = "^0.1" }
 better-panic = { version = "^0.3" }
-clap = { version = "^4", features = [
-  "derive",
+clap = { features = [
   "cargo",
-  "wrap_help",
-  "unicode",
+  "derive",
   "string",
+  "unicode",
   "unstable-styles",
-] }
+  "wrap_help",
+], version = "^4" }
 color-eyre = { version = "^0.6" }
 config = { version = "^0.14" }
-crossterm = { version = "^0.27", features = ["serde", "event-stream"] }
+crossterm = { features = ["event-stream", "serde"], version = "^0.27" }
 derive_deref = { version = "^1" }
 directories = { version = "^5" }
 futures = { version = "^0.3" }
@@ -35,29 +35,28 @@ json5 = { version = "^0.4" }
 lazy_static = { version = "^1" }
 libc = { version = "^0.2" }
 pretty_assertions = { version = "^1.4" }
-radiobrowser = { version = "^0.6", features = [
+radiobrowser = { features = [
   "chrono",
-], git = "https://gitlab.com/radiobrowser/radiobrowser-lib-rust.git", rev = "3703d731" }
-ratatui = { version = "^0.27", features = ["serde", "macros"] }
+], git = "https://gitlab.com/radiobrowser/radiobrowser-lib-rust.git", rev = "3703d731", version = "^0.6" }
+ratatui = { features = ["macros", "serde"], version = "^0.27" }
 reqwest = { version = "^0.12" }
 rodio = { version = "^0.19" }
-serde = { version = "^1", features = ["derive"] }
+serde = { features = ["derive"], version = "^1" }
 serde_json = { version = "^1" }
 signal-hook = { version = "^0.3" }
 strip-ansi-escapes = { version = "^0.2" }
-strum = { version = "^0.26", features = ["derive"] }
+strum = { features = ["derive"], version = "^0.26" }
 thiserror = { version = "^1" }
 throbber-widgets-tui = "0.6.0"
-tokio = { version = "^1.45", features = ["full"] }
+tokio = { features = ["full"], version = "^1.45" }
 tokio-util = { version = "^0.7" }
 tracing = { version = "^0.1" }
 tracing-error = { version = "^0.2" }
-tracing-subscriber = { version = "^0.3", features = ["env-filter", "serde"] }
+tracing-subscriber = { features = ["env-filter", "serde"], version = "^0.3" }
 tui-input = { version = "^0.9" }
 
 [build-dependencies]
-vergen = { version = "^8", features = [ "build", "git", "gitoxide", "cargo" ]}
-vergen = { version = "^8", features = [ "build", "git", "gitoxide", "cargo" ]}
+vergen = { features = ["build", "cargo", "git", "gitoxide"], version = "^8" }
 
 [dev-dependencies]
 rusty-hook = "^0.11"

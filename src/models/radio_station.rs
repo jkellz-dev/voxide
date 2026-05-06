@@ -173,7 +173,7 @@ impl RadioStation {
         Ok(())
     }
 
-    pub fn to_list_item(&self, index: usize) -> ListItem {
+    pub fn to_list_item(&self, index: usize) -> ListItem<'_> {
         let bg_color = match index % 2 {
             0 => NORMAL_ROW_COLOR,
             _ => ALT_ROW_COLOR,
